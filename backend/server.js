@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -21,9 +22,18 @@ app.use('/api/message', messageRoutes);
 
 const PORT = process.env.PORT || 5000;
 
-app.get('/', (req, res) => {
-  res.send('API is running successfully');
-});
+// Serve frontend in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../frontend/dist')));
+
+  app.get('*', (req, res) => {
+    res.sendFile(path.resolve(__dirname, '../frontend/dist/index.html'));
+  });
+} else {
+  app.get('/', (req, res) => {
+    res.send('API is running successfully');
+  });
+}
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/connectchatpro')
   .then(() => {
@@ -32,12 +42,19 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/connectchat
   console.error('MongoDB Connection Error: ', error.message);
 });
 
-const server = app.listen(PORT, console.log(`Server started on PORT ${PORT}`));
+// BUG FIX: Wrapped console.log in arrow function — previously it executed immediately
+const server = app.listen(PORT, () => {
+  console.log(`Server started on PORT ${PORT}`);
+});
 
 const io = new Server(server, {
   pingTimeout: 60000,
   cors: {
-    origin: "http://localhost:5173", // Vite default port
+    // BUG FIX: Allow all origins in production (frontend is served by the same server)
+    // In development, allow the Vite dev server
+    origin: process.env.NODE_ENV === "production"
+      ? true
+      : "http://localhost:5173",
   },
 });
 
@@ -68,8 +85,10 @@ io.on('connection', (socket) => {
   socket.on('typing', (room) => socket.in(room).emit('typing'));
   socket.on('stop typing', (room) => socket.in(room).emit('stop typing'));
 
-  socket.off('setup', () => {
+  // BUG FIX: Changed socket.off to socket.on('disconnect') — 
+  // socket.off removes a listener, it doesn't listen for disconnection.
+  // Also, userData was out of scope here causing a ReferenceError.
+  socket.on('disconnect', () => {
     console.log('USER DISCONNECTED');
-    socket.leave(userData._id);
   });
 });

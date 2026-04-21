@@ -6,7 +6,9 @@ import { Search, MoreVertical, LogOut, Phone, Video, Send } from 'lucide-react';
 import axios from 'axios';
 import io from 'socket.io-client';
 
-const ENDPOINT = "http://localhost:5000";
+// In production, frontend is served by the same server, so use relative URL.
+// In development, the Vite dev server proxies API calls but socket.io needs the direct backend URL.
+const ENDPOINT = import.meta.env.PROD ? "" : "http://localhost:5000";
 var socket, selectedChatCompare;
 
 const ChatPage = () => {
