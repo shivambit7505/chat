@@ -12,9 +12,10 @@ export const useChatStore = create((set, get) => ({
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
       const { data } = await axios.get('/api/chat', config);
-      set({ chats: data });
+      set({ chats: Array.isArray(data) ? data : [] });
     } catch (error) {
       console.error(error);
+      set({ chats: [] }); // Prevent crash on frontend
     }
   },
 
@@ -40,10 +41,10 @@ export const useChatStore = create((set, get) => ({
     try {
       const config = { headers: { Authorization: `Bearer ${token}` } };
       const { data } = await axios.get(`/api/message/${chatId}`, config);
-      set({ messages: data, isLoading: false });
+      set({ messages: Array.isArray(data) ? data : [], isLoading: false });
     } catch (error) {
       console.error(error);
-      set({ isLoading: false });
+      set({ messages: [], isLoading: false });
     }
   },
 

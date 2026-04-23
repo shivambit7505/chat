@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -22,16 +23,18 @@ app.use('/api/message', messageRoutes);
 
 const PORT = process.env.PORT || 5000;
 
-// Serve frontend in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../frontend/dist')));
+// Serve frontend in production or if the build folder exists
+const frontendDistPath = path.join(__dirname, '../frontend/dist');
+
+if (process.env.NODE_ENV === 'production' || fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
 
   app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, '../frontend/dist/index.html'));
+    res.sendFile(path.resolve(frontendDistPath, 'index.html'));
   });
 } else {
   app.get('/', (req, res) => {
-    res.send('API is running successfully');
+    res.send('API is running successfully. Frontend build not found.');
   });
 }
 
@@ -50,11 +53,7 @@ const server = app.listen(PORT, () => {
 const io = new Server(server, {
   pingTimeout: 60000,
   cors: {
-    // BUG FIX: Allow all origins in production (frontend is served by the same server)
-    // In development, allow the Vite dev server
-    origin: process.env.NODE_ENV === "production"
-      ? true
-      : "http://localhost:5173",
+    origin: "*", // Allow all origins to prevent connection blocking on deployed environments
   },
 });
 
