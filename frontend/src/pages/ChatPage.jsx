@@ -9,9 +9,11 @@ import io from 'socket.io-client';
 // In production, frontend is served by the same server, so use relative URL.
 // In development, the Vite dev server proxies API calls but socket.io needs the direct backend URL.
 const ENDPOINT = import.meta.env.PROD ? "" : "http://localhost:5000";
-var socket, selectedChatCompare;
 
 const ChatPage = () => {
+  const socketRef = React.useRef(null);
+  const selectedChatCompareRef = React.useRef(null);
+
   const { user, logout } = useAuthStore();
   const { chats, selectedChat, fetchChats, setSelectedChat, accessChat, messages, fetchMessages, sendMessage, addMessage } = useChatStore();
   const navigate = useNavigate();
@@ -20,6 +22,15 @@ const ChatPage = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [socketConnected, setSocketConnected] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+
+  const showNotification = (msg) => {
+    const id = Date.now();
+    setNotifications((prev) => [...prev, { id, msg }]);
+    setTimeout(() => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }, 3000);
+  };
 
   useEffect(() => {
     if (!user) {
@@ -29,31 +40,35 @@ const ChatPage = () => {
     
     fetchChats(user.token);
     
-    socket = io(ENDPOINT);
-    socket.emit("setup", user);
-    socket.on("connected", () => setSocketConnected(true));
+    socketRef.current = io(ENDPOINT);
+    socketRef.current.emit("setup", user);
+    socketRef.current.on("connected", () => setSocketConnected(true));
     
     const messageHandler = (newMessageReceived) => {
-      if (!selectedChatCompare || selectedChatCompare._id !== newMessageReceived.chat._id) {
-        // notification logic
+      if (!selectedChatCompareRef.current || selectedChatCompareRef.current._id !== newMessageReceived.chat._id) {
+        showNotification(`New message from ${newMessageReceived.sender.name}`);
       } else {
         addMessage(newMessageReceived);
       }
     };
     
-    socket.on("message received", messageHandler);
+    socketRef.current.on("message received", messageHandler);
 
     return () => {
-      socket.off("message received", messageHandler);
-      socket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.off("message received", messageHandler);
+        socketRef.current.disconnect();
+      }
     };
   }, [user, navigate]);
 
   useEffect(() => {
     if (selectedChat) {
       fetchMessages(selectedChat._id, user.token);
-      selectedChatCompare = selectedChat;
-      socket.emit("join chat", selectedChat._id);
+      selectedChatCompareRef.current = selectedChat;
+      if (socketRef.current) {
+        socketRef.current.emit("join chat", selectedChat._id);
+      }
     }
   }, [selectedChat]);
 
@@ -62,8 +77,19 @@ const ChatPage = () => {
     navigate('/');
   };
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (search.trim()) {
+        handleSearch();
+      } else {
+        setSearchResults([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const handleSearch = async () => {
-    if (!search) return;
+    if (!search.trim()) return;
     try {
       const config = { headers: { Authorization: `Bearer ${user.token}` } };
       const { data } = await axios.get(`/api/user?search=${search}`, config);
@@ -81,9 +107,13 @@ const ChatPage = () => {
 
   const handleSendMessage = async () => {
     if (newMessage.trim() && selectedChat) {
-      const data = await sendMessage(newMessage, selectedChat._id, user.token);
-      socket.emit("new message", data);
+      const content = newMessage.trim();
       setNewMessage('');
+      const data = await sendMessage(content, selectedChat._id, user.token);
+      if (data && socketRef.current) {
+        socketRef.current.emit("new message", data);
+        showNotification("Message sent!");
+      }
     }
   };
 
@@ -97,6 +127,15 @@ const ChatPage = () => {
 
   return (
     <div className="chat-layout">
+      {/* Toast Notifications */}
+      <div className="toast-container">
+        {notifications.map((n) => (
+          <div key={n.id} className="toast-message">
+            {n.msg}
+          </div>
+        ))}
+      </div>
+
       {/* Sidebar */}
       <div className="sidebar">
         <div className="sidebar-header">
